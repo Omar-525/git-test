@@ -195,7 +195,6 @@
 </head>
 <body>
 
-<!-- ══ LOBBY ══ -->
 <div id="lobby">
   <div class="logo">Quick<span>Meet</span></div>
   <p class="tagline">اجتماعات سريعة، بدون تعقيد</p>
@@ -227,7 +226,6 @@
   </p>
 </div>
 
-<!-- ══ ROOM ══ -->
 <div id="room">
   <div class="topbar">
     <div class="logo">Quick<span>Meet</span></div>
@@ -272,6 +270,7 @@
 // ══════════════════════════════════════════
 //  QuickMeet — Pure WebRTC P2P (Mesh)
 //  Signaling: FREE public PeerJS cloud server
+//  Relay: FREE Metered.ca STUN/TURN Servers
 // ══════════════════════════════════════════
 
 let peer = null;
@@ -299,22 +298,40 @@ function randomCode() {
   return Math.random().toString(36).slice(2, 8).toUpperCase();
 }
 
-// ── Init PeerJS with public STUN/TURN ──
+// ── Init PeerJS with Metered.ca STUN/TURN ──
 function initPeer(id) {
-  // Use PeerJS public cloud signaling
   return new Promise((resolve, reject) => {
     const p = new Peer(id, {
-      debug: 0,
+      debug: 1, // تم التعديل لإظهار تفاصيل أسهل أثناء فحص الأخطاء
       config: {
         iceServers: [
           { urls: 'stun:stun.l.google.com:19302' },
           { urls: 'stun:stun1.l.google.com:19302' },
-          { urls: 'stun:global.stun.twilio.com:3478' }
+          // خوادم TURN/STUN المجانية من Metered.ca
+          { urls: 'stun:openrelay.metered.ca:80' },
+          {
+            urls: 'turn:openrelay.metered.ca:80',
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
+          },
+          {
+            urls: 'turn:openrelay.metered.ca:443',
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
+          },
+          {
+            urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
+          }
         ]
       }
     });
     p.on('open', () => resolve(p));
-    p.on('error', reject);
+    p.on('error', (err) => {
+      console.error("PeerJS Error:", err);
+      reject(err);
+    });
   });
 }
 
@@ -325,7 +342,6 @@ async function getMedia() {
     micEnabled = true;
     updateMicBtn();
   } catch {
-    // mic denied — still join
     localStream = new MediaStream();
     showToast('⚠️ لم يتم الوصول للميكروفون');
   }
@@ -335,7 +351,6 @@ async function getMedia() {
 function addLocalTile() {
   removeElement('tile-local');
   const tile = createTile('tile-local', myName, true);
-  // show avatar since no cam
   const vid = tile.querySelector('video');
   vid.style.display = 'none';
 
@@ -398,20 +413,17 @@ function addRemoteTile(peerId, name, stream) {
   const avatar = tile.querySelector('.avatar-placeholder');
   vid.srcObject = stream;
 
-  // Show video if stream has video track
   const hasVideo = stream.getVideoTracks().length > 0;
   vid.style.display = hasVideo ? 'block' : 'none';
   avatar.style.display = hasVideo ? 'none' : 'flex';
 
   $('videos').appendChild(tile);
 
-  // If it's a screen share (large)
   if (name.includes('🖥️')) tile.classList.add('screen-share');
 }
 
 function removeRemoteTile(peerId) {
   removeElement('tile-' + peerId);
-  // also remove screen share tile
   removeElement('tile-screen-' + peerId);
 }
 
@@ -423,7 +435,9 @@ async function createRoom() {
 
   showLobbyLoading();
   await getMedia();
-  peer = await initPeer('qm-host-' + currentRoom).catch(e => {
+  
+  // الـ ID الخاص بالمضيف على السيرفر سيكون هو كود الغرفة مباشرة ليعثر عليه الضيف فوراً
+  peer = await initPeer('qm-room-' + currentRoom).catch(e => {
     showToast('❌ خطأ في الاتصال: ' + e.message); hideLobbyLoading(); return null;
   });
   if (!peer) return;
@@ -442,7 +456,10 @@ async function joinRoom() {
 
   showLobbyLoading();
   await getMedia();
-  peer = await initPeer('qm-guest-' + Date.now()).catch(e => {
+  
+  // معرّف عشوائي فريد للضيف لمنع التضارب، ثم الاتصال بمعرّف الغرفة الثابت للمضيف
+  const guestId = 'qm-guest-' + Math.random().toString(36).slice(2, 8).toUpperCase();
+  peer = await initPeer(guestId).catch(e => {
     showToast('❌ خطأ: ' + e.message); hideLobbyLoading(); return null;
   });
   if (!peer) return;
@@ -450,8 +467,8 @@ async function joinRoom() {
   setupPeerListeners();
   enterRoom(code);
 
-  // Connect to host
-  setTimeout(() => connectToPeer('qm-host-' + code), 500);
+  // تم تعديل الربط ليتجه مباشرة إلى المضيف 'qm-room-' + code
+  setTimeout(() => connectToPeer('qm-room-' + code), 800);
 }
 
 function showLobbyLoading() {
@@ -468,22 +485,21 @@ function enterRoom(code) {
   updatePeerCount();
   addLocalTile();
 
-  // Update waiting hint
   $('waitingShareHint').textContent = `أرسل الكود "${code}" لمن تريد الاجتماع معه`;
 }
 
 // ── Connect to a specific peer ──
 function connectToPeer(remotePeerId) {
-  // Data channel (to exchange names)
   const conn = peer.connect(remotePeerId, { metadata: { name: myName } });
+  
   conn.on('open', () => {
     connections[remotePeerId] = connections[remotePeerId] || {};
     connections[remotePeerId].conn = conn;
     conn.send({ type: 'hello', name: myName });
 
-    // Start call
     const call = peer.call(remotePeerId, localStream || new MediaStream(), { metadata: { name: myName } });
     connections[remotePeerId].call = call;
+    
     call.on('stream', remoteStream => {
       const rname = connections[remotePeerId].remoteName || 'مشارك';
       addRemoteTile(remotePeerId, rname, remoteStream);
@@ -499,7 +515,7 @@ function connectToPeer(remotePeerId) {
     if (data.type === 'hello') {
       connections[remotePeerId] = connections[remotePeerId] || {};
       connections[remotePeerId].remoteName = data.name;
-      // Update tile label if exists
+      
       const tile = document.getElementById('tile-' + remotePeerId);
       if (tile) {
         const lbl = tile.querySelector('.tile-label');
@@ -512,30 +528,41 @@ function connectToPeer(remotePeerId) {
     }
   });
 
-  conn.on('error', () => showToast('⚠️ تعذّر الاتصال بالمضيف — تأكد من الكود'));
+  conn.on('error', (err) => {
+    console.error("Connection Error:", err);
+    showToast('⚠️ تعذّر الاتصال — تأكد من الكود أو أن المضيف متصل');
+    hideLobbyLoading();
+  });
 }
 
 // ── Peer event listeners ──
 function setupPeerListeners() {
-  // Someone connects via data channel
   peer.on('connection', conn => {
     const remoteName = conn.metadata?.name || 'مشارك';
+    connections[conn.peer] = connections[conn.peer] || {};
+    connections[conn.peer].conn = conn;
+    connections[conn.peer].remoteName = remoteName;
+
     conn.on('open', () => {
-      connections[conn.peer] = connections[conn.peer] || {};
-      connections[conn.peer].conn = conn;
-      connections[conn.peer].remoteName = remoteName;
       conn.send({ type: 'hello', name: myName });
       updatePeerCount();
     });
+    
     conn.on('data', data => {
       if (data.type === 'hello') {
         connections[conn.peer].remoteName = data.name;
+        // تحديث مظهر الكرت عند استقبال الاسم الكامل
+        const tile = document.getElementById('tile-' + conn.peer);
+        if(tile) {
+          tile.querySelector('.tile-label').textContent = data.name;
+          tile.querySelector('.avatar-circle').textContent = (data.name || '?')[0].toUpperCase();
+        }
       }
     });
+    
     conn.on('close', () => { delete connections[conn.peer]; updatePeerCount(); removeRemoteTile(conn.peer); });
   });
 
-  // Incoming call
   peer.on('call', call => {
     const remoteName = call.metadata?.name || 'مشارك';
     connections[call.peer] = connections[call.peer] || {};
@@ -545,7 +572,14 @@ function setupPeerListeners() {
   });
 
   peer.on('disconnected', () => showToast('⚠️ انقطع الاتصال، يُعاد الاتصال...'));
-  peer.on('error', e => showToast('❌ خطأ: ' + e.message));
+  peer.on('error', e => {
+    if(e.type === 'peer-not-found') {
+      showToast('❌ الكود خاطئ أو أن الغرفة غير موجودة');
+    } else {
+      showToast('❌ خطأ: ' + e.message);
+    }
+    hideLobbyLoading();
+  });
 }
 
 // ══ CONTROLS ══
@@ -597,12 +631,6 @@ async function toggleCam() {
         const av = tile.querySelector('.avatar-placeholder');
         if (av) av.style.display = 'none';
       }
-      // Re-negotiate with peers
-      Object.values(connections).forEach(c => {
-        if (c.call) c.call.peerConnection?.getSenders().forEach(s => {
-          if (s.track?.kind === 'video') return;
-        });
-      });
     } catch { showToast('⚠️ لا يمكن الوصول للكاميرا'); return; }
   }
   $('btnCam').className = 'ctrl-btn ' + (camEnabled ? 'active' : '');
@@ -622,7 +650,6 @@ async function toggleScreen() {
     screenSharing = true;
     $('btnScreen').className = 'ctrl-btn active';
 
-    // Show local screen tile
     const tile = document.createElement('div');
     tile.className = 'video-tile screen-share';
     tile.id = 'tile-screen-local';
@@ -638,7 +665,6 @@ async function toggleScreen() {
     tile.append(vid, lbl, badge);
     $('videos').prepend(tile);
 
-    // Share screen track to all peers
     Object.values(connections).forEach(c => {
       if (!c.call) return;
       const pc = c.call.peerConnection;
@@ -692,6 +718,7 @@ function leaveRoom() {
   screenSharing = false; camEnabled = false; micEnabled = false;
   $('room').classList.remove('active');
   $('lobby').style.display = 'flex';
+  hideLobbyLoading();
   $('videos').innerHTML = '<div class="waiting" id="waitingOverlay"><div class="pulse"></div><h3>في انتظار المشاركين…</h3><p id="waitingShareHint">شارك الكود أعلاه مع من تريد الاجتماع معهم</p></div>';
   showToast('👋 غادرت الاجتماع');
 }
