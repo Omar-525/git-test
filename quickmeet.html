@@ -70,10 +70,8 @@
 
   /* ── ROOM ── */
   #room { display: none; flex-direction: column; height: 100vh; }
-
   #room.active { display: flex; }
 
-  /* Top bar */
   .topbar {
     display: flex; align-items: center; gap: 1rem;
     padding: .75rem 1.25rem; background: var(--surface);
@@ -89,7 +87,6 @@
   .room-id-badge:hover { border-color: var(--accent); color: var(--text); }
   .peer-count { font-size: .8rem; color: var(--muted); }
 
-  /* Video grid */
   #videos {
     flex: 1; overflow: auto; display: grid; gap: 8px; padding: 8px;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -101,10 +98,7 @@
     aspect-ratio: 16/9; border: 1px solid var(--border);
   }
   .video-tile.screen-share { grid-column: 1 / -1; aspect-ratio: 16/9; }
-
-  .video-tile video {
-    width: 100%; height: 100%; object-fit: cover; display: block;
-  }
+  .video-tile video { width: 100%; height: 100%; object-fit: cover; display: block; }
   .video-tile.screen-share video { object-fit: contain; background: #000; }
 
   .tile-label {
@@ -130,7 +124,6 @@
     font-size: 1.4rem; font-weight: 600; color: #fff;
   }
 
-  /* Controls */
   .controls {
     display: flex; align-items: center; justify-content: center; gap: .75rem;
     padding: .9rem 1.25rem; background: var(--surface);
@@ -150,7 +143,6 @@
 
   .ctrl-icon { font-size: 1.3rem; line-height: 1; }
 
-  /* Status toast */
   #toast {
     position: fixed; bottom: 5.5rem; left: 50%; transform: translateX(-50%) translateY(10px);
     background: #1e2535; border: 1px solid var(--border);
@@ -161,7 +153,6 @@
   }
   #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-  /* Waiting overlay */
   .waiting {
     position: absolute; inset: 0; display: flex; flex-direction: column;
     align-items: center; justify-content: center; gap: 1rem;
@@ -179,12 +170,9 @@
   .waiting h3 { font-size: 1rem; font-weight: 500; }
   .waiting p  { color: var(--muted); font-size: .85rem; max-width: 260px; line-height: 1.6; }
 
-  /* Scrollbar */
   ::-webkit-scrollbar { width: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-
-  /* Copy feedback */
   .copied { color: var(--accent2) !important; }
 
   @media (max-width: 500px) {
@@ -221,7 +209,7 @@
   </div>
 
   <p style="color:var(--muted); font-size:.8rem; text-align:center; max-width:320px; line-height:1.6;">
-    ⚡ يعمل مباشرةً في المتصفح — لا يلزم تثبيت أي شيء<br>
+    ⚡ يعمل مباشرةً في المتصفح الآمن — عبر خوادم خاصة ومستقرة<br>
     مشاركة الشاشة + الصوت + الكاميرا
   </p>
 </div>
@@ -267,23 +255,16 @@
 <div id="toast"></div>
 
 <script>
-// ══════════════════════════════════════════
-//  QuickMeet — Pure WebRTC P2P (Mesh)
-//  Signaling: FREE public PeerJS cloud server
-//  Relay: Private Metered.ca STUN/TURN Servers
-// ══════════════════════════════════════════
-
 let peer = null;
 let localStream = null;
 let screenStream = null;
-let connections = {};    // peerId → { conn (data), call }
+let connections = {};    
 let myName = 'مجهول';
 let currentRoom = null;
 let micEnabled = false;
 let camEnabled = false;
 let screenSharing = false;
 
-// ── DOM helpers ──
 const $ = id => document.getElementById(id);
 function showToast(msg, duration = 3000) {
   const t = $('toast');
@@ -293,22 +274,23 @@ function showToast(msg, duration = 3000) {
   t._to = setTimeout(() => t.classList.remove('show'), duration);
 }
 
-// ── Generate 6-char room ID ──
 function randomCode() {
   return Math.random().toString(36).slice(2, 8).toUpperCase();
 }
 
-// ── Init PeerJS with Custom Metered.ca STUN/TURN ──
+// ── تهيئة الاتصال باستخدام خادم الإشارات الخاص بك من Metered والـ TURN معاً ──
 function initPeer(id) {
   return new Promise((resolve, reject) => {
     const p = new Peer(id, {
+      host: 'quick-meet.metered.live', // استخدام الدومين الخاص بك كخادم إشارات مستقر بدلاً من خادم PeerJS العام
+      port: 443,
+      secure: true,
+      path: '/peerjs', // المسار الافتراضي لـ Metered لتشغيل خدمة الربط
       debug: 1, 
       config: {
         iceServers: [
           { urls: 'stun:stun.l.google.com:19302' },
           { urls: 'stun:stun1.l.google.com:19302' },
-          
-          // دمج خوادم STUN/TURN الخاصة بك بالكامل
           { urls: 'stun:quick-meet.metered.live:80' },
           {
             urls: 'turn:quick-meet.metered.live:80',
@@ -321,7 +303,7 @@ function initPeer(id) {
             credential: 'dRQLuOOT7K3pPhUMda236mH0l5jwFMwPYj17pogrknLDlqU3'
           },
           {
-            urls: 'turn:quick-meet.metered.live:443?transport=tcp', // تضمن العبور الآمن من باقات الهاتف المحمول
+            urls: 'turn:quick-meet.metered.live:443?transport=tcp', 
             username: 'openrelayproject',
             credential: 'dRQLuOOT7K3pPhUMda236mH0l5jwFMwPYj17pogrknLDlqU3'
           }
@@ -336,7 +318,6 @@ function initPeer(id) {
   });
 }
 
-// ── Create local media stream ──
 async function getMedia() {
   try {
     localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
@@ -348,7 +329,6 @@ async function getMedia() {
   }
 }
 
-// ── Add local tile ──
 function addLocalTile() {
   removeElement('tile-local');
   const tile = createTile('tile-local', myName, true);
@@ -388,7 +368,6 @@ function removeElement(id) {
   if (el) el.remove();
 }
 
-// ── Peer count update ──
 function updatePeerCount() {
   const count = Object.keys(connections).length;
   $('peerCount').textContent = count === 0 ? 'أنت فقط' : `${count + 1} مشاركين`;
@@ -397,7 +376,6 @@ function updatePeerCount() {
   if (waiting) waiting.style.display = count > 0 ? 'none' : 'flex';
 }
 
-// ── Handle incoming call (receive remote stream) ──
 function handleIncomingCall(call, remoteName) {
   call.answer(localStream || new MediaStream());
   call.on('stream', remoteStream => {
@@ -419,7 +397,6 @@ function addRemoteTile(peerId, name, stream) {
   avatar.style.display = hasVideo ? 'none' : 'flex';
 
   $('videos').appendChild(tile);
-
   if (name.includes('🖥️')) tile.classList.add('screen-share');
 }
 
@@ -482,11 +459,9 @@ function enterRoom(code) {
   $('roomBadge').textContent = '📋 ' + code;
   updatePeerCount();
   addLocalTile();
-
   $('waitingShareHint').textContent = `أرسل الكود "${code}" لمن تريد الاجتماع معه`;
 }
 
-// ── Connect to a specific peer ──
 function connectToPeer(remotePeerId) {
   const conn = peer.connect(remotePeerId, { metadata: { name: myName } });
   
@@ -516,24 +491,20 @@ function connectToPeer(remotePeerId) {
       
       const tile = document.getElementById('tile-' + remotePeerId);
       if (tile) {
-        const lbl = tile.querySelector('.tile-label');
-        if (lbl) lbl.textContent = data.name;
-        const av = tile.querySelector('.avatar-placeholder span');
-        if (av) av.textContent = data.name;
-        const circle = tile.querySelector('.avatar-circle');
-        if (circle) circle.textContent = (data.name || '?')[0].toUpperCase();
+        tile.querySelector('.tile-label').textContent = data.name;
+        tile.querySelector('.avatar-placeholder span').textContent = data.name;
+        tile.querySelector('.avatar-circle').textContent = (data.name || '?')[0].toUpperCase();
       }
     }
   });
 
   conn.on('error', (err) => {
     console.error("Connection Error:", err);
-    showToast('⚠️ تعذّر الاتصال — تأكد من الكود أو أن المضيف متصل');
+    showToast('⚠️ تعذّر الاتصال — تأكد من الكود أو أن الغرفة موجودة');
     hideLobbyLoading();
   });
 }
 
-// ── Peer event listeners ──
 function setupPeerListeners() {
   peer.on('connection', conn => {
     const remoteName = conn.metadata?.name || 'مشارك';
@@ -573,13 +544,11 @@ function setupPeerListeners() {
     if(e.type === 'peer-not-found') {
       showToast('❌ الكود خاطئ أو أن الغرفة غير موجودة');
     } else {
-      showToast('❌ خطأ: ' + e.message);
+      showToast('❌ خطأ في الاتصال');
     }
     hideLobbyLoading();
   });
 }
-
-// ══ CONTROLS ══
 
 // Mic
 async function toggleMic() {
@@ -612,8 +581,7 @@ async function toggleCam() {
     const tile = $('tile-local');
     if (tile) {
       tile.querySelector('video').style.display = 'none';
-      const av = tile.querySelector('.avatar-placeholder');
-      if (av) av.style.display = 'flex';
+      if (tile.querySelector('.avatar-placeholder')) tile.querySelector('.avatar-placeholder').style.display = 'flex';
     }
   } else {
     try {
@@ -625,8 +593,7 @@ async function toggleCam() {
         const vid = tile.querySelector('video');
         vid.srcObject = localStream;
         vid.style.display = 'block';
-        const av = tile.querySelector('.avatar-placeholder');
-        if (av) av.style.display = 'none';
+        if (tile.querySelector('.avatar-placeholder')) tile.querySelector('.avatar-placeholder').style.display = 'none';
       }
     } catch { showToast('⚠️ لا يمكن الوصول للكاميرا'); return; }
   }
@@ -638,10 +605,7 @@ async function toggleCam() {
 
 // Screen share
 async function toggleScreen() {
-  if (screenSharing) {
-    stopScreenShare();
-    return;
-  }
+  if (screenSharing) { stopScreenShare(); return; }
   try {
     screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
     screenSharing = true;
@@ -654,18 +618,15 @@ async function toggleScreen() {
     vid.autoplay = true; vid.playsInline = true; vid.muted = true;
     vid.srcObject = screenStream;
     const lbl = document.createElement('div');
-    lbl.className = 'tile-label';
-    lbl.textContent = '🖥️ شاشتك';
+    lbl.className = 'tile-label'; lbl.textContent = '🖥️ شاشتك';
     const badge = document.createElement('div');
-    badge.className = 'tile-badge';
-    badge.textContent = 'مشاركة';
+    badge.className = 'tile-badge'; badge.textContent = 'مشاركة';
     tile.append(vid, lbl, badge);
     $('videos').prepend(tile);
 
     Object.values(connections).forEach(c => {
-      if (!c.call) return;
+      if (!c.call || !c.call.peerConnection) return;
       const pc = c.call.peerConnection;
-      if (!pc) return;
       const screenTrack = screenStream.getVideoTracks()[0];
       pc.getSenders().forEach(s => { if (s.track?.kind === 'video') pc.removeTrack(s); });
       pc.addTrack(screenTrack, screenStream);
@@ -678,7 +639,6 @@ async function toggleScreen() {
   }
 }
 
-// Stop Screen Share
 function stopScreenShare() {
   if (!screenSharing) return;
   screenSharing = false;
@@ -691,23 +651,15 @@ function stopScreenShare() {
 
 function updateRemoteStreams() {
   Object.values(connections).forEach(c => {
-    if (!c.call) return;
+    if (!c.call || !c.call.peerConnection) return;
     const pc = c.call.peerConnection;
-    if (!pc) return;
     pc.getSenders().forEach(s => {
-      if (s.track?.kind === 'video') {
-        const newTrack = localStream.getVideoTracks()[0];
-        if (newTrack) s.replaceTrack(newTrack);
-      }
-      if (s.track?.kind === 'audio') {
-        const newTrack = localStream.getAudioTracks()[0];
-        if (newTrack) s.replaceTrack(newTrack);
-      }
+      if (s.track?.kind === 'video' && localStream.getVideoTracks()[0]) s.replaceTrack(localStream.getVideoTracks()[0]);
+      if (s.track?.kind === 'audio' && localStream.getAudioTracks()[0]) s.replaceTrack(localStream.getAudioTracks()[0]);
     });
   });
 }
 
-// Leave
 function leaveRoom() {
   if (screenStream) screenStream.getTracks().forEach(t => t.stop());
   if (localStream) localStream.getTracks().forEach(t => t.stop());
@@ -721,7 +673,6 @@ function leaveRoom() {
   showToast('👋 غادرت الاجتماع');
 }
 
-// Copy room ID
 function copyRoomId() {
   if (!currentRoom) return;
   navigator.clipboard.writeText(currentRoom).then(() => {
@@ -732,12 +683,10 @@ function copyRoomId() {
   });
 }
 
-// ── Load PeerJS ──
 const peerScript = document.createElement('script');
 peerScript.src = 'https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js';
 document.head.appendChild(peerScript);
 
-// Enter on room input
 document.addEventListener('DOMContentLoaded', () => {
   $('roomInput').addEventListener('keydown', e => { if (e.key === 'Enter') joinRoom(); });
   $('nameInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('roomInput').focus(); });
