@@ -270,7 +270,7 @@
 // ══════════════════════════════════════════
 //  QuickMeet — Pure WebRTC P2P (Mesh)
 //  Signaling: FREE public PeerJS cloud server
-//  Relay: FREE Metered.ca STUN/TURN Servers
+//  Relay: Private Metered.ca STUN/TURN Servers
 // ══════════════════════════════════════════
 
 let peer = null;
@@ -298,31 +298,32 @@ function randomCode() {
   return Math.random().toString(36).slice(2, 8).toUpperCase();
 }
 
-// ── Init PeerJS with Metered.ca STUN/TURN ──
+// ── Init PeerJS with Custom Metered.ca STUN/TURN ──
 function initPeer(id) {
   return new Promise((resolve, reject) => {
     const p = new Peer(id, {
-      debug: 1, // تم التعديل لإظهار تفاصيل أسهل أثناء فحص الأخطاء
+      debug: 1, 
       config: {
         iceServers: [
           { urls: 'stun:stun.l.google.com:19302' },
           { urls: 'stun:stun1.l.google.com:19302' },
-          // خوادم TURN/STUN المجانية من Metered.ca
-          { urls: 'stun:openrelay.metered.ca:80' },
+          
+          // دمج خوادم STUN/TURN الخاصة بك بالكامل
+          { urls: 'stun:quick-meet.metered.live:80' },
           {
-            urls: 'turn:openrelay.metered.ca:80',
+            urls: 'turn:quick-meet.metered.live:80',
             username: 'openrelayproject',
-            credential: 'openrelayproject'
+            credential: 'dRQLuOOT7K3pPhUMda236mH0l5jwFMwPYj17pogrknLDlqU3'
           },
           {
-            urls: 'turn:openrelay.metered.ca:443',
+            urls: 'turn:quick-meet.metered.live:443',
             username: 'openrelayproject',
-            credential: 'openrelayproject'
+            credential: 'dRQLuOOT7K3pPhUMda236mH0l5jwFMwPYj17pogrknLDlqU3'
           },
           {
-            urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+            urls: 'turn:quick-meet.metered.live:443?transport=tcp', // تضمن العبور الآمن من باقات الهاتف المحمول
             username: 'openrelayproject',
-            credential: 'openrelayproject'
+            credential: 'dRQLuOOT7K3pPhUMda236mH0l5jwFMwPYj17pogrknLDlqU3'
           }
         ]
       }
@@ -436,7 +437,6 @@ async function createRoom() {
   showLobbyLoading();
   await getMedia();
   
-  // الـ ID الخاص بالمضيف على السيرفر سيكون هو كود الغرفة مباشرة ليعثر عليه الضيف فوراً
   peer = await initPeer('qm-room-' + currentRoom).catch(e => {
     showToast('❌ خطأ في الاتصال: ' + e.message); hideLobbyLoading(); return null;
   });
@@ -457,7 +457,6 @@ async function joinRoom() {
   showLobbyLoading();
   await getMedia();
   
-  // معرّف عشوائي فريد للضيف لمنع التضارب، ثم الاتصال بمعرّف الغرفة الثابت للمضيف
   const guestId = 'qm-guest-' + Math.random().toString(36).slice(2, 8).toUpperCase();
   peer = await initPeer(guestId).catch(e => {
     showToast('❌ خطأ: ' + e.message); hideLobbyLoading(); return null;
@@ -467,7 +466,6 @@ async function joinRoom() {
   setupPeerListeners();
   enterRoom(code);
 
-  // تم تعديل الربط ليتجه مباشرة إلى المضيف 'qm-room-' + code
   setTimeout(() => connectToPeer('qm-room-' + code), 800);
 }
 
@@ -551,7 +549,6 @@ function setupPeerListeners() {
     conn.on('data', data => {
       if (data.type === 'hello') {
         connections[conn.peer].remoteName = data.name;
-        // تحديث مظهر الكرت عند استقبال الاسم الكامل
         const tile = document.getElementById('tile-' + conn.peer);
         if(tile) {
           tile.querySelector('.tile-label').textContent = data.name;
@@ -681,6 +678,7 @@ async function toggleScreen() {
   }
 }
 
+// Stop Screen Share
 function stopScreenShare() {
   if (!screenSharing) return;
   screenSharing = false;
